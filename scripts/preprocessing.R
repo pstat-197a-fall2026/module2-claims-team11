@@ -11,7 +11,7 @@ require(tokenizers)
 # function to parse html and clean text
 parse_fn <- function(.html){
   read_html(.html) %>%
-    html_elements('head', 'p') %>%
+    html_elements('head, p') %>%
     html_text2() %>%
     str_c(collapse = ' ') %>%
     rm_url() %>%
