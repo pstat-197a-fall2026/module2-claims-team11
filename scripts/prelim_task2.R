@@ -2,32 +2,15 @@ library(tidyverse)
 library(tidytext)
 library(rvest)
 
+source("scripts/preprocessing_reference.R")
+
 load("data/claims-raw.RData")
 
-# Extract only meaningful webpage content
-clean_html_task2 <- function(html) {
-  tryCatch({
-    
-    read_html(html) %>%
-      html_elements("title, h1, h2, h3, h4, h5, h6, p") %>%
-      html_text2() %>%
-      str_c(collapse = " ") %>%
-      str_remove_all("https?://\\S+|www\\.\\S+") %>%
-      str_replace_all("[[:punct:][:digit:]]", " ") %>%
-      str_to_lower() %>%
-      str_squish()
-    
-  }, error = function(e) "")
-}
-
-# Reprocess the original webpage data
+# Clean webpage text with the shared parse_data() function.
+# Keep the original Task 2 filters before preprocessing.
 claims_task2 <- claims_raw %>%
-  filter(!is.na(text_tmp),
-         str_detect(text_tmp, "<!"),
-         !is.na(bclass)) %>%
-  mutate(
-    text_clean = map_chr(text_tmp, clean_html_task2)
-  )
+  filter(!is.na(text_tmp), !is.na(bclass)) %>%
+  parse_data()
 
 # Create bigrams
 bigram_counts <- claims_task2 %>%
