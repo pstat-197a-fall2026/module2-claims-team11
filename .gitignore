@@ -41,3 +41,6 @@ vignettes/*.pdf
 
 # testing data
 private
+
+# Python Virtual Environments
+.virtualenvs/
