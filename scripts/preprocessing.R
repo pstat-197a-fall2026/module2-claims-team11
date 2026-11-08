@@ -1,6 +1,7 @@
 ## this script contains functions for preprocessing
 ## claims data; intended to be sourced 
 require(tidyverse)
+require(tidymodels)
 require(tidytext)
 require(textstem)
 require(rvest)
@@ -11,7 +12,7 @@ require(tokenizers)
 # function to parse html and clean text
 parse_fn <- function(.html){
   read_html(.html) %>%
-    html_elements('head, p') %>%
+    html_elements('h1, h2, h3, h4, h5, h6, p') %>%
     html_text2() %>%
     str_c(collapse = ' ') %>%
     rm_url() %>%
