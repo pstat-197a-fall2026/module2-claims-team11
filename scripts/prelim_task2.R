@@ -12,7 +12,7 @@ claims_task2 <- claims_raw %>%
   filter(!is.na(text_tmp), !is.na(bclass)) %>%
   parse_data()
 
-# Create bigrams
+# Creating bigrams with stop words removed
 bigram_counts <- claims_task2 %>%
   select(.id, text_clean) %>%
   unnest_tokens(
@@ -22,6 +22,14 @@ bigram_counts <- claims_task2 %>%
     n = 2
   ) %>%
   filter(!is.na(bigram)) %>%
+  separate(bigram, c("word1", "word2"), sep = " ") %>%
+  filter(
+    nchar(word1) > 2,
+    nchar(word2) > 2,
+    !word1 %in% tidytext::stop_words$word,
+    !word2 %in% tidytext::stop_words$word
+  ) %>%
+  unite(bigram, word1, word2, sep = " ") %>%
   count(.id, bigram, name = "n")
 
 # Find the 20 most common bigrams
@@ -96,10 +104,15 @@ get_counts <- function(text, type) {
         term, text,
         token = "ngrams", n = 2
       ) %>%
+      filter(!is.na(term)) %>%
+      separate(term, c("word1", "word2"), sep = " ") %>%
       filter(
-        !is.na(term),
-        !str_detect(term, "\\b[a-z]\\b")
-      )
+        nchar(word1) > 2,
+        nchar(word2) > 2,
+        !word1 %in% tidytext::stop_words$word,
+        !word2 %in% tidytext::stop_words$word
+      ) %>%
+      unite(term, word1, word2, sep = " ")
   }
   
   df %>%

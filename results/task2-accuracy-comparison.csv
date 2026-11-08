@@ -1,0 +1,4 @@
+"Model","Accuracy"
+"Word-only logistic PCA",0.738095238095238
+"Word log-odds only (stage 2)",0.738095238095238
+"Word log-odds + bigram PCs",0.733333333333333
