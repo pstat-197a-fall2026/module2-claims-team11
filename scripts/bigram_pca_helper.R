@@ -25,10 +25,15 @@ get_counts <- function(text, type) {
         term, text,
         token = "ngrams", n = 2
       ) %>%
+      filter(!is.na(term)) %>%
+      separate(term, c("word1", "word2"), sep = " ") %>%
       filter(
-        !is.na(term),
-        !str_detect(term, "\\b[a-z]\\b")
-      )
+        nchar(word1) > 2,
+        nchar(word2) > 2,
+        !word1 %in% tidytext::stop_words$word,
+        !word2 %in% tidytext::stop_words$word
+      ) %>%
+      unite(term, word1, word2, sep = " ")
   }
   
   df %>%
