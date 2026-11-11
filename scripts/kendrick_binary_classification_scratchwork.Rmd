@@ -23,7 +23,16 @@ load("../data/claims-test.RData")
 
 ```
 
+# Quick Notes
+- I realized that in my loops, there were some pages that when cleaned, were left with no data. Those caused problems since they did not get a prediction generated.
+- Alternatively, some pages that may have had data, may still have been dropped if none of their tokens were in the list of tokens that had a idf value calculated. 
+- This messes up the analysis for nearly all of the work below. I have updated the function to recover those lost pages, but for whatever reason, it completely messes the actual accuracy of the models with PCA.
+- Before realizing this issue, it did NOT seem like PCA helped with the model anyway. The model that used the TF-IDF matrix directly as input worked better. The new code accounts for this.
+- All other loops with PCA are left with the old function that dropped empty/insignificant rows for archival purposes.
+- The tested neural network with the updated function is at the very bottom in the section "NN without PCA"
 
+
+This is just taking a look at the structure of `claims_clean`
 ```{r}
 # original_url: url
 # text_tmp: raw html
@@ -34,7 +43,6 @@ load("../data/claims-test.RData")
 # text_clean: processed text
 claims_clean %>% head(2)
 ```
-
 
 ### Pseudocode
 Take claims_clean and break into 80% training and 20% testing
@@ -48,7 +56,8 @@ For each fold:
   Put the assessment PCA values into the trained neural network and get binary predictions. 
   Calculate accuracy across folds.
 
-### Obtaining PCA columns
+### Sample NN
+General structure: tokenize the data, calculate tfidf, create pca model from tfidf, calculate PCs, train the NN on the PCs
 ```{r}
 claims_tokenized <- claims_clean %>% tokenize_fn(n = 1)
 claims_tf <- claims_tokenized %>% tf_fn()
@@ -60,12 +69,7 @@ pca_columns <- pca_predict_fn(tfidf_table, pca_model)
 
 claims_clean %>%
     transmute(.id, text_length = str_length(text_clean)) %>% arrange(text_length)
-```
 
-
-### Sample NN
-
-```{r}
 # Basic logistic regression like in section?
 model_data <- pca_columns %>% left_join(claims_clean %>% select(.id, bclass), by = ".id")
 y_vals <- model_data$bclass %>% as.numeric() - 1 # 1: relevant, 0: irrelevant
@@ -87,10 +91,12 @@ training <- fit(model, x = x_vals, y = y_vals, epochs = 50,
                 validation_split = 0.2)
 plot(training)
 
+claims_clean %>% pull(.id) %>% length()
+claims_tokenized %>% pull(.id) %>% unique() %>% length()
+dim(tfidf_table)
 ```
 
 # 5-fold cross validation on a basic binary classification neural network
-
 ```{r}
 # Transforms cleaned text into a tfidf matrix. Transforms the tfidf matrix into principal components, and uses those to train a neural network. Generates predictions
 # Stuff that can be changed: 
@@ -100,6 +106,98 @@ plot(training)
 # Neural network layers/neuron numbers
 # Training epochs 
 
+set.seed(1)
+
+# Data Split
+data_split <- initial_split(claims_clean, prop = 0.8, strata = bclass)
+training_data <- training(data_split)
+testing_data <- testing(data_split)
+folds <- vfold_cv(training_data, 5, strata = bclass)
+
+cv_results <- vector("list", 5)
+
+for(fold in 1:5){
+  message(paste0("Fold ", fold))
+  analysis_data <- analysis(folds$splits[[fold]])
+  assessment_data <- assessment(folds$splits[[fold]])
+  
+  # Tokenize and calculate term frequency
+  # Can change the length of an n-gram here
+  analysis_tokens <- analysis_data %>% tokenize_fn(n = 1)
+  assessment_tokens <- assessment_data %>% tokenize_fn(n = 1)
+  analysis_tf <- analysis_tokens %>% tf_fn()
+  assessment_tf <- assessment_tokens %>% tf_fn()
+  
+  # IDF from analysis
+  # Can change the # of ngram terms and selection criteria
+  idf <- analysis_tf %>% idf_fn(max_terms = 1000, max_doc_prop = 0.9, min_doc_freq = 2)
+  
+  # tfidf matrices
+  analysis_tfidf <- tfidf_fn(analysis_tf, idf)
+  assessment_tfidf <- tfidf_fn(assessment_tf, idf)
+  
+  # PCA model and PC conversion
+  # Can change the number of principal components/variance proportion
+  pca_model <- pca_train_fn(analysis_tfidf, n_pc = 50)
+  analysis_pca_matrix <- pca_predict_fn(pca_data = pca_model, tfidf_data = analysis_tfidf)
+  assessment_pca_matrix <- pca_predict_fn(pca_data = pca_model, tfidf_data = assessment_tfidf)
+  
+  # Consolidate data for neural network
+  analysis_model_data <- analysis_pca_matrix %>% left_join(analysis_data %>% select(.id, bclass), by = ".id")
+  assessment_model_data <- assessment_pca_matrix %>% left_join(assessment_data %>% select(.id, bclass), by = ".id")
+  
+  x_train <- analysis_model_data %>% select(starts_with("PC")) %>% as.matrix()
+  y_train <- as.numeric(analysis_model_data$bclass) - 1
+  
+  x_assess <- assessment_model_data %>% select(starts_with("PC")) %>% as.matrix()
+  y_assess <- as.numeric(assessment_model_data$bclass) - 1
+  
+  # Neural Network Training
+  # Model Specification
+  model <- keras_model_sequential(input_shape = ncol(x_train)) %>% 
+    layer_dense(units = 1) %>% 
+    layer_activation(activation = "sigmoid")
+  # Model Configuration
+  model %>% compile(loss = "binary_crossentropy",
+                    optimizer = "adam",
+                    metrics = "binary_accuracy")
+  # Can change the number of epochs
+  training <- fit(model, x = x_train, y = y_train, epochs = 50, validation_split = 0.2)
+
+  # Generate predictions
+  predictions <- predict(model, x_assess)
+  probabilities <- as.numeric(predictions)
+  predicted_class <- factor(if_else(probabilities >= 0.5, levels(training_data$bclass)[2], levels(training_data$bclass)[1]), 
+                            levels = levels(training_data$bclass))
+  
+  # Metrics 
+  fold_metrics <- tibble(truth = assessment_model_data$bclass, predicted = predicted_class, probability = probabilities) %>%
+    summarize(accuracy = accuracy_vec(truth, predicted), 
+              sensitivity = sens_vec(truth, predicted, event_level = "second"),
+              specificity = spec_vec(truth, predicted, event_level = "second"),
+              roc_auc = roc_auc_vec(truth, probability, event_level = "second"))
+
+  # Store fold results
+  cv_results[[fold]] <- fold_metrics
+}
+
+# Combine fold metrics
+cv_results <- bind_rows(cv_results, .id = "fold")
+
+# Calculate mean 
+cv_summary <- cv_results %>%
+  summarize(across(c(accuracy, sensitivity, specificity, roc_auc), mean))
+```
+
+Using unigram (word) tokens, with top 1000 IDF terms (>=2 documents, <= 90% of documents), 50 principal components, basic logistic regression model from section, 50 epochs, I get:
+Accuracy: 74.1%
+Sensitivity: 86.5%
+Specificity: 59.8%
+ROC AUC: 81.6%
+
+Trying a neural network with 1 hidden layer, everything else the same as above.
+```{r}
+# NN with 1 hidden layer
 set.seed(1)
 
 # Data Split
@@ -148,6 +246,7 @@ for(fold in 1:5){
   # Neural Network Training
   # Model Specification
   model <- keras_model_sequential(input_shape = ncol(x_train)) %>% 
+    layer_dense(units = 20) %>% 
     layer_dense(units = 1) %>% 
     layer_activation(activation = "sigmoid")
   # Model Configuration
@@ -177,22 +276,381 @@ for(fold in 1:5){
 # Combine fold metrics
 cv_results <- bind_rows(cv_results, .id = "fold")
 
-# Calculate mean and standard deviation
+# Calculate mean 
 cv_summary <- cv_results %>%
   summarize(across(c(accuracy, sensitivity, specificity, roc_auc), mean))
 ```
+With 1 hidden layer of 20 neurons, the metrics are:
+Accuracy: 75.9%
+Sensitivity: 72.4%
+Specificity: 80%
+ROC AUC: 83.1%
 
-I believe this is 5 fold cross validation for a basic neural network. 
-Within each fold, I tokenize the analysis and assessment sets and calculate term frequencies.
-Within the analysis set, I calculate the IDF values for each word.
-I calculate tfidf matrices for the analysis set and assessment sets. The assessment tfidf matrix is calculated with the tf values from the assessment set and the idf values from the analysis set. 
-I train a PCA model on the analysis tfidf matrix. I apply the PCA model to the analysis and assessment sets to convert them to principle components.
-I use the analysis PCA columns to train a neural network.
-Then use the assessment PCA columns to generate predictions through the neural network. 
+Accuracy is comparable, but specificity is now higher and closer to sensitivity level. ROC AUC also slightly increases. Notably, the accuracy seems to flatten out around 10 epochs, suggesting maybe 50 is unnecessary.
 
-Using unigram (word) tokens, with top 1000 IDF terms (>=2 documents, <= 90% of documents), 50 principal components, basic logistic regression model from section, 50 epochs, I get:
+Now trying to change the number of principal components from 50 to enough to explain 80% of variance
+```{r}
+# Change from 50 PCs to PCs that combined explain 80% of variance
+set.seed(1)
 
-Accuracy: 74.1%
-Sensitivity: 86.5%
-Specificity: 59.8%
-ROC AUC: 81.6%
+# Data Split
+data_split <- initial_split(claims_clean, prop = 0.8, strata = bclass)
+training_data <- training(data_split)
+testing_data <- testing(data_split)
+folds <- vfold_cv(training_data, 5, strata = bclass)
+
+cv_results <- vector("list", 5)
+
+for(fold in 1:5){
+  message(paste0("Fold ", fold))
+  analysis_data <- analysis(folds$splits[[fold]])
+  assessment_data <- assessment(folds$splits[[fold]])
+  
+  # Tokenize and calculate term frequency
+  # Can change the length of an n-gram here
+  analysis_tokens <- analysis_data %>% tokenize_fn(n = 1)
+  assessment_tokens <- assessment_data %>% tokenize_fn(n = 1)
+  analysis_tf <- analysis_tokens %>% tf_fn()
+  assessment_tf <- assessment_tokens %>% tf_fn()
+  
+  # IDF from analysis
+  # Can change the # of ngram terms and selection criteria
+  idf <- analysis_tf %>% idf_fn(max_terms = 1000, max_doc_prop = 0.9, min_doc_freq = 2)
+  
+  # tfidf matrices
+  analysis_tfidf <- tfidf_fn(analysis_tf, idf)
+  assessment_tfidf <- tfidf_fn(assessment_tf, idf)
+  
+  # PCA model and PC conversion
+  # Can change the number of principal components/variance proportion
+  pca_model <- pca_train_fn(analysis_tfidf, var_keep = 0.8)
+  analysis_pca_matrix <- pca_predict_fn(pca_data = pca_model, tfidf_data = analysis_tfidf)
+  assessment_pca_matrix <- pca_predict_fn(pca_data = pca_model, tfidf_data = assessment_tfidf)
+  
+  # Consolidate data for neural network
+  analysis_model_data <- analysis_pca_matrix %>% left_join(analysis_data %>% select(.id, bclass), by = ".id")
+  assessment_model_data <- assessment_pca_matrix %>% left_join(assessment_data %>% select(.id, bclass), by = ".id")
+  
+  x_train <- analysis_model_data %>% select(starts_with("PC")) %>% as.matrix()
+  y_train <- as.numeric(analysis_model_data$bclass) - 1
+  
+  x_assess <- assessment_model_data %>% select(starts_with("PC")) %>% as.matrix()
+  y_assess <- as.numeric(assessment_model_data$bclass) - 1
+  
+  # Neural Network Training
+  # Model Specification
+  model <- keras_model_sequential(input_shape = ncol(x_train)) %>% 
+    layer_dense(units = 20) %>% 
+    layer_dense(units = 1) %>% 
+    layer_activation(activation = "sigmoid")
+  # Model Configuration
+  model %>% compile(loss = "binary_crossentropy",
+                    optimizer = "adam",
+                    metrics = "binary_accuracy")
+  # Can change the number of epochs
+  training <- fit(model, x = x_train, y = y_train, epochs = 20)
+
+  # Generate predictions
+  predictions <- predict(model, x_assess)
+  probabilities <- as.numeric(predictions)
+  predicted_class <- factor(if_else(probabilities >= 0.5, levels(training_data$bclass)[2], levels(training_data$bclass)[1]), 
+                            levels = levels(training_data$bclass))
+  
+  # Metrics 
+  fold_metrics <- tibble(truth = assessment_model_data$bclass, predicted = predicted_class, probability = probabilities) %>%
+    summarize(accuracy = accuracy_vec(truth, predicted), 
+              sensitivity = sens_vec(truth, predicted, event_level = "second"),
+              specificity = spec_vec(truth, predicted, event_level = "second"),
+              roc_auc = roc_auc_vec(truth, probability, event_level = "second"))
+
+  # Store fold results
+  cv_results[[fold]] <- fold_metrics
+}
+
+# Combine fold metrics
+cv_results <- bind_rows(cv_results, .id = "fold")
+
+# Calculate mean 
+cv_summary <- cv_results %>%
+  summarize(across(c(accuracy, sensitivity, specificity, roc_auc), mean))
+
+cv_summary
+```
+Changing to keeping PCAs that explain a combined 80% of variance results in the following:
+
+Accuracy: 77.9%
+Sensitivity: 76.6%
+Specificity: 79.5%
+ROC AUC: 84.5%
+
+Accuracy and ROC AUC slightly increasing. Sensitivity and Specificity don't seem to be improving. Seems like ~130 PCs. 
+
+- Idea of 2/3 rule? (2/3 # of neurons in hidden layer). Changing the number of neurons in the hidden layer didn't have a significant difference. (Adding more neurons isn't improving?)
+- Try adding a second hidden layer of the same size? Also no significant difference
+
+Try changing the activation function from identity to ReLU below:
+```{r}
+# Change to relu activation function
+set.seed(1)
+
+# Data Split
+data_split <- initial_split(claims_clean, prop = 0.8, strata = bclass)
+training_data <- training(data_split)
+testing_data <- testing(data_split)
+folds <- vfold_cv(training_data, 5, strata = bclass)
+
+cv_results <- vector("list", 5)
+
+for(fold in 1:5){
+  message(paste0("Fold ", fold))
+  analysis_data <- analysis(folds$splits[[fold]])
+  assessment_data <- assessment(folds$splits[[fold]])
+  
+  # Tokenize and calculate term frequency
+  # Can change the length of an n-gram here
+  analysis_tokens <- analysis_data %>% tokenize_fn(n = 1)
+  assessment_tokens <- assessment_data %>% tokenize_fn(n = 1)
+  analysis_tf <- analysis_tokens %>% tf_fn()
+  assessment_tf <- assessment_tokens %>% tf_fn()
+  
+  # IDF from analysis
+  # Can change the # of ngram terms and selection criteria
+  idf <- analysis_tf %>% idf_fn(max_terms = 2000, max_doc_prop = 0.9, min_doc_freq = 2)
+  
+  # tfidf matrices
+  analysis_tfidf <- tfidf_fn(analysis_tf, idf)
+  assessment_tfidf <- tfidf_fn(assessment_tf, idf)
+  
+  # PCA model and PC conversion
+  # Can change the number of principal components/variance proportion
+  pca_model <- pca_train_fn(analysis_tfidf, var_keep = 0.95)
+  analysis_pca_matrix <- pca_predict_fn(pca_data = pca_model, tfidf_data = analysis_tfidf)
+  assessment_pca_matrix <- pca_predict_fn(pca_data = pca_model, tfidf_data = assessment_tfidf)
+  
+  # Consolidate data for neural network
+  analysis_model_data <- analysis_pca_matrix %>% left_join(analysis_data %>% select(.id, bclass), by = ".id")
+  assessment_model_data <- assessment_pca_matrix %>% left_join(assessment_data %>% select(.id, bclass), by = ".id")
+  
+  x_train <- analysis_model_data %>% select(starts_with("PC")) %>% as.matrix()
+  y_train <- as.numeric(analysis_model_data$bclass) - 1
+  
+  x_assess <- assessment_model_data %>% select(starts_with("PC")) %>% as.matrix()
+  y_assess <- as.numeric(assessment_model_data$bclass) - 1
+  
+  # Neural Network Training
+  # Model Specification
+  model <- keras_model_sequential(input_shape = ncol(x_train)) %>% 
+    layer_dense(units = 20, activation = "relu") %>% 
+    layer_dense(units = 1) %>% 
+    layer_activation(activation = "sigmoid")
+  # Model Configuration
+  model %>% compile(loss = "binary_crossentropy",
+                    optimizer = "adam",
+                    metrics = "binary_accuracy")
+  # Can change the number of epochs
+  early_stop <- callback_early_stopping(monitor = "val_loss", patience = 5, restore_best_weights = TRUE)
+  training <- fit(model, x = x_train, y = y_train, epochs = 40, validation_split = 0.2, callbacks = list(early_stop))
+
+  # Generate predictions
+  predictions <- predict(model, x_assess)
+  probabilities <- as.numeric(predictions)
+  predicted_class <- factor(if_else(probabilities >= 0.5, levels(training_data$bclass)[2], levels(training_data$bclass)[1]), 
+                            levels = levels(training_data$bclass))
+  
+  # Metrics 
+  fold_metrics <- tibble(truth = assessment_model_data$bclass, predicted = predicted_class, probability = probabilities) %>%
+    summarize(accuracy = accuracy_vec(truth, predicted), 
+              sensitivity = sens_vec(truth, predicted, event_level = "second"),
+              specificity = spec_vec(truth, predicted, event_level = "second"),
+              roc_auc = roc_auc_vec(truth, probability, event_level = "second"))
+
+  # Store fold results
+  cv_results[[fold]] <- fold_metrics
+}
+
+# Combine fold metrics
+cv_results <- bind_rows(cv_results, .id = "fold")
+
+# Calculate mean 
+cv_summary <- cv_results %>%
+  summarize(across(c(accuracy, sensitivity, specificity, roc_auc), mean))
+
+cv_summary
+```
+Change the activation function to ReLu for the hidden layers?
+
+Accuracy: 78.3%
+Sensitivity: 79.5%
+Specificity: 76.9%
+ROC AUC: 84.8%
+
+Very, very marginally better.
+
+# NN without PCA
+Try feeding the tf-idf matrix as input directly:
+
+```{r}
+# TESTING NN WITHOUT USING PCA
+
+set_random_seed(1)
+# Data Split
+data_split <- initial_split(claims_clean, prop = 0.8, strata = bclass)
+training_data <- training(data_split)
+testing_data <- testing(data_split)
+folds <- vfold_cv(training_data, 5, strata = bclass)
+
+cv_results <- vector("list", 5)
+
+for(fold in 1:5){
+  message(paste0("Fold ", fold))
+  analysis_data <- analysis(folds$splits[[fold]])
+  assessment_data <- assessment(folds$splits[[fold]])
+  
+  # Tokenize and calculate term frequency
+  # Can change the length of an n-gram here
+  analysis_tokens <- analysis_data %>% tokenize_fn(n = 1)
+  assessment_tokens <- assessment_data %>% tokenize_fn(n = 1)
+  analysis_tf <- analysis_tokens %>% tf_fn()
+  assessment_tf <- assessment_tokens %>% tf_fn()
+  
+  # IDF from analysis
+  # Can change the # of ngram terms and selection criteria
+  idf <- analysis_tf %>% idf_fn(max_terms = 7500, max_doc_prop = 0.9, min_doc_freq = 2)
+  
+  # tfidf matrices
+  analysis_tfidf <- tfidf_fn_updated(analysis_tf, idf, all_ids = analysis_data)
+  assessment_tfidf <- tfidf_fn_updated(assessment_tf, idf, all_ids = assessment_data)
+  
+  # Consolidate data for neural network
+  analysis_model_data <- analysis_tfidf %>% left_join(analysis_data %>% select(.id, bclass), by = ".id")
+  assessment_model_data <- assessment_tfidf %>% left_join(assessment_data %>% select(.id, bclass), by = ".id")
+  
+  x_train <- analysis_model_data %>% select(-.id, -bclass) %>% as.matrix()
+  y_train <- as.numeric(analysis_model_data$bclass) - 1
+  
+  x_assess <- assessment_model_data %>% select(-.id, -bclass) %>% as.matrix()
+  y_assess <- as.numeric(assessment_model_data$bclass) - 1
+  
+  # Neural Network Training
+  # Model Specification
+  model <- keras_model_sequential(input_shape = ncol(x_train)) %>% 
+    layer_dense(units = 20, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>% 
+    layer_dense(units = 20, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>% 
+    layer_dense(units = 1) %>% 
+    layer_activation(activation = "sigmoid")
+  # Model Configuration
+  model %>% compile(loss = "binary_crossentropy",
+                    optimizer = "adam",
+                    metrics = "binary_accuracy")
+  # Can change the number of epochs
+  early_stop <- callback_early_stopping(monitor = "val_loss", patience = 10, restore_best_weights = TRUE)
+  training <- fit(model, x = x_train, y = y_train, epochs = 20, validation_split = 0.2, callbacks = list(early_stop))
+
+  # Generate predictions
+  predictions <- predict(model, x_assess)
+  probabilities <- as.numeric(predictions)
+  predicted_class <- factor(if_else(probabilities >= 0.5, levels(training_data$bclass)[2], levels(training_data$bclass)[1]), 
+                            levels = levels(training_data$bclass))
+  
+  # Metrics 
+  fold_metrics <- tibble(truth = assessment_model_data$bclass, predicted = predicted_class, probability = probabilities) %>%
+    summarize(accuracy = accuracy_vec(truth, predicted), 
+              sensitivity = sens_vec(truth, predicted, event_level = "second"),
+              specificity = spec_vec(truth, predicted, event_level = "second"),
+              roc_auc = roc_auc_vec(truth, probability, event_level = "second"))
+
+  # Store fold results
+  cv_results[[fold]] <- fold_metrics
+}
+
+# Combine fold metrics
+cv_results <- bind_rows(cv_results, .id = "fold")
+
+# Calculate mean 
+cv_summary <- cv_results %>%
+  summarize(across(c(accuracy, sensitivity, specificity, roc_auc), mean))
+
+cv_summary
+
+dim(x_assess)
+length(y_assess)
+dim(assessment_data)
+```
+7500 tokens (1-grams), some regularization (0.001) at each step, 20 neurons each in 2 hidden layers
+Accuracy: 80.2%
+Sensitivity: 76.9%
+Specificity: 83.8%
+ROC AUC: 86.8%
+
+Tried playing around with the # of tokens, the size of n-grams, some regularization, removing a hidden layer, changing # of neurons in each layer. This was what I found worked best.
+
+
+# Applying to testing set
+```{r}
+set_random_seed(1)
+# Tokenize and calculate term frequency
+training_tokens <- training_data %>% tokenize_fn(n = 1)
+training_tf <- training_tokens %>% tf_fn()
+
+# IDF from training
+idf <- training_tf %>% idf_fn(max_terms = 7500, max_doc_prop = 0.9, min_doc_freq = 2)
+
+# tfidf matrix
+training_tfidf <- tfidf_fn_updated(training_tf, idf, all_ids = training_data)
+
+training_model_data <- training_tfidf %>% left_join(training_data %>% select(.id, bclass), by = ".id")
+x_train <- training_model_data %>% select(-.id, -bclass) %>% as.matrix()
+y_train <- as.numeric(training_model_data$bclass) - 1
+
+
+# Neural Network Training
+# Model Specification
+model <- keras_model_sequential(input_shape = ncol(x_train)) %>% 
+  layer_dense(units = 20, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>% 
+  layer_dense(units = 20, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>% 
+  layer_dense(units = 1) %>% 
+  layer_activation(activation = "sigmoid")
+# Model Configuration
+model %>% compile(loss = "binary_crossentropy", 
+                  optimizer = "adam",
+                  metrics = "binary_accuracy")
+# Can change the number of epochs
+early_stop <- callback_early_stopping(monitor = "val_loss", patience = 10, restore_best_weights = TRUE)
+model_training_history <- fit(model, x = x_train, y = y_train, epochs = 20, validation_split = 0.2, callbacks = list(early_stop))
+
+
+# Break testing data
+testing_tokens <- testing_data %>% tokenize_fn(n = 1)
+testing_tf <- testing_tokens %>% tf_fn()
+testing_tfidf <- tfidf_fn_updated(testing_tf, idf, testing_data)
+testing_model_data <- testing_tfidf %>% left_join(testing_data %>% select(.id, bclass), by = ".id")
+x_test <- testing_model_data %>% select(-.id, -bclass) %>% as.matrix()
+y_test <- as.numeric(testing_model_data$bclass) - 1
+
+# Generate predictions
+predictions <- predict(model, x_test)
+probabilities <- as.numeric(predictions)
+predicted_class <- factor(if_else(probabilities >= 0.5, levels(testing_data$bclass)[2], levels(testing_data$bclass)[1]), 
+                          levels = levels(testing_data$bclass)) 
+
+# Metrics
+test_metrics <- tibble(truth = testing_model_data$bclass, predicted = predicted_class, probability = probabilities) %>%
+  summarize(accuracy = accuracy_vec(truth, predicted),
+            sensitivity = sens_vec(truth, predicted, event_level = "second"),
+            specificity = spec_vec(truth, predicted, event_level = "second"),
+            roc_auc = roc_auc_vec(truth, probability, event_level = "second")
+  )
+confusion_matrix <- conf_mat(tibble(truth = testing_model_data$bclass, estimate = predicted_class), truth, estimate)
+
+test_metrics
+confusion_matrix 
+```
+
+Testing Metrics:
+Accuracy: 83.6%
+Sensitivity: 83.5%
+Specificity: 83.8%
+ROC AUC: 89.0%
+
+- Uses only the 7500 most common tokens when calculating the IDF.
+- Neural network has 2 hidden layers with 20 neurons each, ReLU activation, and ridge regularization with alpha = 0.001. Adam optimizer, binary cross entropy loss function. Trained for 20 epochs with a 10 epoch early stop if no progress.
