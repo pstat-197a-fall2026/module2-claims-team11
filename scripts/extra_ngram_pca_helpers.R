@@ -7,28 +7,32 @@ require(stopwords)
 require(tokenizers)
 
 # tokenizes parsed text into n-grams. Specify n. Output is the document id, classification labels, and each n-gram on a row
+
 tokenize_fn <- function(.df, n = 1){
   if (n < 1 || n != as.integer(n)) {
     stop("n must be a positive integer.")
   }
+  
   out <- .df %>%
     select(.id, text_clean) %>%
-    unnest_tokens(output = word, input = text_clean, token = "words", to_lower = TRUE) %>%
+    unnest_tokens(output = word, input = text_clean,
+                  token = "words", to_lower = TRUE) %>%
     anti_join(stop_words, by = c("word" = "word")) %>%
     mutate(word = lemmatize_words(word)) %>%
-    filter(str_length(word) > 2)
-  if (n == 1){
+    filter(str_length(word) > 2, !is.na(word), word != "")
+  
+  if (n == 1) {
     out <- out %>%
       mutate(term = word)
-  }else{
+  } else {
     out <- out %>%
       group_by(.id) %>%
-      summarise(term = list(tokenize_ngrams(word, n = n, n_min = n, simplify = TRUE)[[1]]), .groups = "drop") %>%
+      summarise(term = list(tokenize_ngrams(paste(word, collapse = " "), n = n, n_min = n, simplify = TRUE)),
+                .groups = "drop") %>%
       unnest(term)
   }
   out %>% select(.id, term)
 }
-
 
 # generates term frequencies of each token in each text. The input here is the output from tokenize_fn
 tf_fn <- function(token_data){
@@ -46,6 +50,7 @@ tf_fn <- function(token_data){
 idf_fn <- function(tf_data, min_doc_freq = 3, max_doc_prop = 0.9, max_terms = 400){
   n_docs <- n_distinct(tf_data$.id)
   out <- tf_data %>%
+    filter(!is.na(term), term != "") %>% 
     group_by(term) %>%
     summarise(doc_freq = n_distinct(.id), total = sum(n), .groups = "drop") %>%
     filter(doc_freq >= min_doc_freq, doc_freq < max_doc_prop * n_docs) %>%
@@ -62,6 +67,7 @@ idf_fn <- function(tf_data, min_doc_freq = 3, max_doc_prop = 0.9, max_terms = 40
 tfidf_fn <- function(tf_data, idf_data){
   # Get alphabetized vocabulary
   vocab <- idf_data %>%
+    filter(!is.na(term), term != "") %>% 
     arrange(term) %>%
     pull(term)
   # Generate tf-idf values
@@ -78,6 +84,43 @@ tfidf_fn <- function(tf_data, idf_data){
   out <- out %>% select(.id, all_of(vocab)) %>% select(.id, sort(vocab))
   return(out)
 }
+
+# UPDATED TFIDF FUNCTION (tracks missing IDs so that any pages that didn't have any data or whose words weren't in the IDF list aren't forgotten)
+tfidf_fn_updated <- function(tf_data, idf_data, all_ids){
+  # Get alphabetized vocabulary
+  vocab <- idf_data %>%
+    filter(!is.na(term), term != "") %>%
+    arrange(term) %>%
+    pull(term)
+  
+  # Generate tf-idf values
+  out <- tf_data %>%
+    inner_join(idf_data %>% select(term, idf), by = "term") %>%
+    mutate(tf_idf = tf * idf) %>%
+    select(.id, term, tf_idf) %>%
+    pivot_wider(id_cols = .id, names_from = term, values_from = tf_idf, values_fill = 0)
+  
+  # Restore all original document IDs
+  out <- all_ids %>%
+    select(.id) %>%
+    distinct() %>%
+    left_join(out, by = ".id")
+  
+  # Replace missing TF-IDF values with zero
+  out <- out %>%
+    mutate(across(-.id, ~replace_na(.x, 0)))
+  
+  # Make sure all analysis terms are in the tfidf table
+  missing_terms <- setdiff(vocab, names(out))
+  out[missing_terms] <- 0
+  
+  # Return columns in consistent order
+  out <- out %>%
+    select(.id, all_of(sort(vocab)))
+  
+  return(out)
+}
+
 
 # Train a PCA model using tfidf matrix
 # specify either var_keep (minimum cumulative variance) or n_pc (fixed number of components)
