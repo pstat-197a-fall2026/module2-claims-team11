@@ -22,12 +22,4 @@ We investigated whether including bigrams (two-word combinations) improved binar
 
 ### Neural net
 
-Summarize the neural network model you trained by desribing:
-
--   architecture
-
--   optimization and loss
-
--   training epochs
-
--   predictive accuracy
+We trained two neural networks to predict whether a webpage contained relevant claim content. We converted the cleaned text into numerical features using TF-IDF. Both models used the Adam optimizer, binary cross-entropy loss, and five training epochs. Our first model used 25 neurons and a dropout rate of 0.2, achieving 81.8% accuracy. Our second model used 64 neurons and a dropout rate of 0.4, achieving 81.1% accuracy. Overall, our first model performed better and achieved a higher accuracy than the best logistic regression model from Task 1, which achieved 75.1%.
