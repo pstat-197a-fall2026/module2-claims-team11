@@ -4,7 +4,8 @@ library(tidyverse)
 library(rvest)
 library(keras)
 library(tensorflow)
-
+library(tidymodels)
+source("scripts/preprocessing.R")
 # Load the data
 load("data/claims-raw.RData")
 
@@ -26,28 +27,18 @@ clean_html_task2 <- function(html) {
 }
 
 claims_task3 <- claims_raw %>%
-  filter(!is.na(text_tmp),
-         str_detect(text_tmp, "<!"),
-         !is.na(bclass)) %>%
-  mutate(text_clean = map_chr(text_tmp, clean_html_task2)) %>%
-  filter(text_clean != "") %>%
-  distinct(.id, .keep_all = TRUE)
+  parse_data()
 
-glimpse(claims_task3)
+set.seed(110826)
 
-#Spliting data 
-set.seed(197)
-
-train_idx3 <- unlist(
-  lapply(split(seq_len(nrow(claims_task3)),
-               claims_task3$bclass), function(i) {
-                 sample(i, floor(0.8 * length(i)))
-               }),
-  use.names = FALSE
+split3 <- initial_split(
+  claims_task3,
+  prop = 0.8,
+  strata = bclass
 )
 
-train3 <- claims_task3[train_idx3, ]
-valid3 <- claims_task3[-train_idx3, ]
+train3 <- training(split3)
+valid3 <- testing(split3)
 
 cat("Training pages:", nrow(train3), "\n")
 cat("Validation pages:", nrow(valid3), "\n")
