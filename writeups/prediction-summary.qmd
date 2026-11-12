@@ -16,6 +16,8 @@ In one paragraph lay out your preprocessing pipeline. No need to provide exact s
 
 -   what text content was extracted from HTML
 
+For our primary task analysis, we opted to extract only `<h1>-<h6>` and `<p>` tags from the raw HTML content, after brifely considering including other text content such as in `<head>` and `<title>` tags.
+
 -   how text was cleaned
 
 -   how cleaned text was represented quantitatively
