@@ -1,6 +1,6 @@
 ---
 title: "Summary of exploratory tasks"
-author: 'YOUR NAMES HERE'
+author: 'James Liang,	Katrina Topchiyan,	Kendrick Lam,	Luke Drushell,	Sami Gibson'
 date: today
 ---
 
