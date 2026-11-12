@@ -1,6 +1,6 @@
 ---
 title: "Predictive modeling of claims status"
-author: 'YOUR NAMES HERE'
+author: 'James Liang,	Katrina Topchiyan,	Kendrick Lam,	Luke Drushell,	Sami Gibson'
 date: today
 ---
 
