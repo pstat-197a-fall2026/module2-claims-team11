@@ -1,0 +1,373 @@
+---
+title: "multiclass classification"
+author: "Kendrick Lam"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidymodels)
+library(keras)
+library(tensorflow)
+library(tidytext)
+library(rvest)
+
+source("preprocessing_reference.R") # parse_fn, parse_data, nlp_fn
+source("bigram_pca_helper.R")
+source("extra_ngram_pca_helpers.R")
+load('../data/claims-clean-example.RData')
+load("../data/claims-raw.RData")
+load("../data/claims-test.RData")
+
+```
+
+
+
+# Initial Proof of Concept for Multiclass Neural Net
+```{r}
+set_random_seed(1)
+# Data Split
+data_split <- initial_split(claims_clean, prop = 0.8, strata = mclass)
+training_data <- training(data_split)
+testing_data <- testing(data_split)
+folds <- vfold_cv(training_data, 5, strata = mclass)
+
+cv_results <- vector("list", 5)
+class_levels <- levels(training_data$mclass)
+n_classes <- length(class_levels)
+
+for(fold in 1:5){
+  message(paste0("Fold ", fold))
+  analysis_data <- analysis(folds$splits[[fold]])
+  assessment_data <- assessment(folds$splits[[fold]])
+  
+  # Tokenize and calculate term frequency
+  # Can change the length of an n-gram here
+  analysis_tokens <- analysis_data %>% tokenize_fn(n = 1)
+  assessment_tokens <- assessment_data %>% tokenize_fn(n = 1)
+  analysis_tf <- analysis_tokens %>% tf_fn()
+  assessment_tf <- assessment_tokens %>% tf_fn()
+  
+  # IDF from analysis
+  # Can change the # of ngram terms and selection criteria
+  idf <- analysis_tf %>% idf_fn(max_terms = 10000, max_doc_prop = 0.9, min_doc_freq = 2)
+  
+  # tfidf matrices
+  analysis_tfidf <- tfidf_fn_updated(analysis_tf, idf, all_ids = analysis_data)
+  assessment_tfidf <- tfidf_fn_updated(assessment_tf, idf, all_ids = assessment_data)
+  
+  # Consolidate data for neural network
+  analysis_model_data <- analysis_tfidf %>% left_join(analysis_data %>% select(.id, mclass), by = ".id")
+  assessment_model_data <- assessment_tfidf %>% left_join(assessment_data %>% select(.id, mclass), by = ".id")
+  
+  x_train <- analysis_model_data %>% select(-.id, -mclass) %>% as.matrix()
+  y_train <- as.integer(factor(analysis_model_data$mclass, levels = class_levels)) - 1
+  
+  x_assess <- assessment_model_data %>% select(-.id, -mclass) %>% as.matrix()
+  y_assess <- factor(assessment_model_data$mclass, levels = class_levels)
+  
+  # Neural Network Training
+  # Model Specification
+  model <- keras_model_sequential(input_shape = ncol(x_train)) %>% 
+    layer_dense(units = 30, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>% 
+    layer_dense(units = 30, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>% 
+    layer_dense(units = n_classes) %>% 
+    layer_activation(activation = "softmax")
+  
+  # Model Configuration
+  model %>% compile(loss = "sparse_categorical_crossentropy", optimizer = "adam", metrics = "accuracy")
+  
+  # Can change the number of epochs
+  training <- fit(model, x = x_train, y = y_train, epochs = 20)
+
+  # Generate predictions
+  predictions <- predict(model, x_assess)
+  predicted_class <- factor(class_levels[max.col(predictions)], levels = class_levels)
+  probabilities <- as_tibble(predictions)
+  names(probabilities) <- class_levels
+  
+  # Metrics 
+  fold_predictions <- tibble(truth = y_assess, predicted = predicted_class) %>% bind_cols(probabilities)
+  fold_metrics <- fold_predictions %>% summarize(accuracy = accuracy_vec(truth, predicted), macro_f1 = f_meas_vec(truth, predicted, estimator = "macro"))
+
+  # Store fold results
+  cv_results[[fold]] <- list(metrics = fold_metrics, predictions = fold_predictions)
+}
+
+# Combine fold metrics
+cv_metrics <- bind_rows(lapply(cv_results, function(x) x$metrics), .id = "fold")
+cv_predictions <- bind_rows(lapply(cv_results, function(x) x$predictions), .id = "fold")
+
+# Calculate mean 
+cv_summary <- cv_metrics %>%
+  summarize(across(c(accuracy, macro_f1), mean))
+
+cv_summary
+conf_mat(cv_predictions, truth = truth, estimate = predicted)
+```
+Current config: 10000 terms, 20 epochs, 2 hidden layer w/ 30 neurons
+80.2% accuracy, 71.2% macro F1
+
+                               Truth
+Prediction                      N/A: No relevant content. Physical Activity Possible Fatality Potentially unlawful activity Other claim content
+  N/A: No relevant content.                           686                57                39                            49                  51
+  Physical Activity                                    33               128                 0                             0                   0
+  Possible Fatality                                    46                 0               309                             0                   2
+  Potentially unlawful activity                        32                 1                 2                           233                   4
+  Other claim content                                  18                 0                 2                             1                  17
+  
+
+# Tuning the Multiclass Neural Net
+```{r}
+set_random_seed(1)
+# Data Split
+data_split <- initial_split(claims_clean, prop = 0.8, strata = mclass)
+training_data <- training(data_split)
+testing_data <- testing(data_split)
+folds <- vfold_cv(training_data, 5, strata = mclass)
+
+cv_results <- vector("list", 5)
+class_levels <- levels(training_data$mclass)
+n_classes <- length(class_levels)
+
+for(fold in 1:5){
+  message(paste0("Fold ", fold))
+  analysis_data <- analysis(folds$splits[[fold]])
+  assessment_data <- assessment(folds$splits[[fold]])
+  
+  # Tokenize and calculate term frequency
+  # Can change the length of an n-gram here
+  analysis_tokens <- analysis_data %>% tokenize_fn(n = 1)
+  assessment_tokens <- assessment_data %>% tokenize_fn(n = 1)
+  analysis_tf <- analysis_tokens %>% tf_fn()
+  assessment_tf <- assessment_tokens %>% tf_fn()
+  
+  # IDF from analysis
+  # Can change the # of ngram terms and selection criteria
+  idf <- analysis_tf %>% idf_fn(max_terms = 10000, max_doc_prop = 0.9, min_doc_freq = 2)
+  
+  # tfidf matrices
+  analysis_tfidf <- tfidf_fn_updated(analysis_tf, idf, all_ids = analysis_data)
+  assessment_tfidf <- tfidf_fn_updated(assessment_tf, idf, all_ids = assessment_data)
+  
+  # Consolidate data for neural network
+  analysis_model_data <- analysis_tfidf %>% left_join(analysis_data %>% select(.id, mclass), by = ".id")
+  assessment_model_data <- assessment_tfidf %>% left_join(assessment_data %>% select(.id, mclass), by = ".id")
+  
+  x_train <- analysis_model_data %>% select(-.id, -mclass) %>% as.matrix()
+  y_train <- as.integer(factor(analysis_model_data$mclass, levels = class_levels)) - 1
+  
+  x_assess <- assessment_model_data %>% select(-.id, -mclass) %>% as.matrix()
+  y_assess <- factor(assessment_model_data$mclass, levels = class_levels)
+  
+  # Neural Network Training
+  # Model Specification
+  model <- keras_model_sequential(input_shape = ncol(x_train)) %>% 
+    layer_dense(units = 30, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>% 
+    layer_dense(units = 30, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>% 
+    layer_dense(units = n_classes) %>% 
+    layer_activation(activation = "softmax")
+  
+  # Model Configuration
+  model %>% compile(loss = "sparse_categorical_crossentropy", optimizer = "adam", metrics = "accuracy")
+  
+  # TESTING CLASS WEIGHTING 
+  class_counts <- table(factor(analysis_model_data$mclass, levels = class_levels))
+  class_proportions <- class_counts / sum(class_counts)
+  
+  # Weighting with normalization
+  class_weights <- 1 / class_proportions^0.75
+  class_weights <- class_weights / mean(class_weights)
+  
+  # Match weights to integer-encoded class labels
+  names(class_weights) <- as.character(0:(n_classes - 1))
+  class_weights <- as.list(class_weights)
+  training <- fit(model, x = x_train, y = y_train, epochs = 20, class_weight = class_weights)
+
+  # Generate predictions
+  predictions <- predict(model, x_assess)
+  predicted_class <- factor(class_levels[max.col(predictions)], levels = class_levels)
+  probabilities <- as_tibble(predictions)
+  names(probabilities) <- class_levels
+  
+  # Metrics 
+  fold_predictions <- tibble(truth = y_assess, predicted = predicted_class) %>% bind_cols(probabilities)
+  fold_metrics <- fold_predictions %>% summarize(accuracy = accuracy_vec(truth, predicted), macro_f1 = f_meas_vec(truth, predicted, estimator = "macro"))
+
+  # Store fold results
+  cv_results[[fold]] <- list(metrics = fold_metrics, predictions = fold_predictions)
+}
+
+# Combine fold metrics
+cv_metrics <- bind_rows(lapply(cv_results, function(x) x$metrics), .id = "fold")
+cv_predictions <- bind_rows(lapply(cv_results, function(x) x$predictions), .id = "fold")
+
+# Calculate mean 
+cv_summary <- cv_metrics %>%
+  summarize(across(c(accuracy, macro_f1), mean))
+
+cv_summary
+conf_mat(cv_predictions, truth = truth, estimate = predicted)
+```
+With ^0.75 weighting:
+Accuracy: 81.3%
+Macro F1: 75.8%
+
+                               Truth
+Prediction                      N/A: No relevant content. Physical Activity Possible Fatality Potentially unlawful activity Other claim content
+  N/A: No relevant content.                           645                45                27                            31                  30
+  Physical Activity                                    41               140                 0                             0                   0
+  Possible Fatality                                    58                 0               318                             0                   2
+  Potentially unlawful activity                        32                 1                 2                           249                   3
+  Other claim content                                  39                 0                 5                             3                  39
+  
+# Model on Testing Data
+```{r}
+set_random_seed(1)
+
+# Data Split
+data_split <- initial_split(claims_clean, prop = 0.8, strata = mclass)
+training_data <- training(data_split)
+testing_data <- testing(data_split)
+
+# Establish class levels
+class_levels <- levels(training_data$mclass)
+n_classes <- length(class_levels)
+
+# Tokenize and calculate term frequency
+training_tokens <- training_data %>% tokenize_fn(n = 1)
+training_tf <- training_tokens %>% tf_fn()
+
+# IDF calculated exclusively from training data
+idf <- training_tf %>% idf_fn(max_terms = 10000, max_doc_prop = 0.9, min_doc_freq = 2)
+
+# Generate training TF-IDF matrix
+training_tfidf <- tfidf_fn_updated(training_tf, idf, all_ids = training_data)
+
+# Consolidate training data
+training_model_data <- training_tfidf %>% left_join(training_data %>% select(.id, mclass), by = ".id")
+
+x_train <- training_model_data %>% select(-.id, -mclass) %>% as.matrix()
+y_train <- as.integer(factor(training_model_data$mclass, levels = class_levels)) - 1
+
+# Weights
+class_counts <- table(factor(training_model_data$mclass, levels = class_levels))
+class_proportions <- class_counts / sum(class_counts)
+
+# Weighting with normalization
+class_weights <- 1 / class_proportions^0.75
+class_weights <- class_weights / mean(class_weights)
+
+# Match weights to integer-encoded class labels
+names(class_weights) <- as.character(0:(n_classes - 1))
+class_weights <- as.list(class_weights)
+
+# Model specification
+model <- keras_model_sequential(input_shape = ncol(x_train)) %>%
+  layer_dense(units = 30, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>%
+  layer_dense(units = 30, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>%
+  layer_dense(units = n_classes) %>%
+  layer_activation(activation = "softmax")
+
+# Model configuration
+model %>% compile(loss = "sparse_categorical_crossentropy", optimizer = "adam", metrics = "accuracy")
+
+# Train model
+model_training_history <- fit(model, x = x_train, y = y_train, epochs = 20, class_weight = class_weights)
+
+# Testing Data
+testing_tokens <- testing_data %>% tokenize_fn(n = 1)
+testing_tf <- testing_tokens %>% tf_fn()
+testing_tfidf <- tfidf_fn_updated(testing_tf, idf, all_ids = testing_data)
+
+# Consolidate testing data
+testing_model_data <- testing_tfidf %>%
+  left_join(testing_data %>% select(.id, mclass), by = ".id")
+
+x_test <- testing_model_data %>%
+  select(-.id, -mclass) %>%
+  as.matrix()
+
+y_test <- factor(testing_model_data$mclass, levels = class_levels)
+
+# Predictions
+predictions <- predict(model, x_test)
+predicted_class <- factor(class_levels[max.col(predictions)], levels = class_levels)
+probabilities <- as_tibble(predictions)
+names(probabilities) <- class_levels
+
+# Model Metrics
+test_predictions <- tibble(truth = y_test, predicted = predicted_class) %>%
+  bind_cols(probabilities)
+
+# Calculate metrics
+test_metrics <- test_predictions %>%
+  summarize(accuracy = accuracy_vec(truth, predicted), macro_f1 = f_meas_vec(truth, predicted, estimator = "macro"))
+confusion_matrix <- conf_mat(test_predictions, truth = truth, estimate = predicted)
+
+test_metrics
+confusion_matrix
+```
+Testing Accuracy: 77.9%
+Macro F1: 74.0%
+
+                               Truth
+Prediction                      N/A: No relevant content. Physical Activity Possible Fatality Potentially unlawful activity Other claim content
+  N/A: No relevant content.                           152                11                 6                            12                  11
+  Physical Activity                                    22                35                 0                             1                   0
+  Possible Fatality                                    10                 1                78                             0                   0
+  Potentially unlawful activity                        11                 0                 0                            57                   0
+  Other claim content                                   6                 0                 4                             0                  13
+  
+  
+  
+# Full Model trained on all data
+```{r}
+set_random_seed(1)
+
+training_data <- claims_clean
+class_levels <- levels(training_data$mclass)
+n_classes <- length(class_levels)
+
+training_tokens <- training_data %>% tokenize_fn(n = 1)
+training_tf <- training_tokens %>% tf_fn()
+idf <- training_tf %>% idf_fn(max_terms = 10000, max_doc_prop = 0.9, min_doc_freq = 3)
+training_tfidf <- tfidf_fn_updated(training_tf, idf, all_ids = training_data)
+
+training_model_data <- training_tfidf %>%
+  left_join(training_data %>% select(.id, mclass), by = ".id")
+
+x_train <- training_model_data %>%
+  select(-.id, -mclass) %>%
+  as.matrix()
+
+y_train <- as.integer(factor(training_model_data$mclass, levels = class_levels)) - 1
+
+# Weights
+class_counts <- table(factor(training_model_data$mclass, levels = class_levels))
+class_proportions <- class_counts / sum(class_counts)
+class_weights <- 1 / class_proportions^0.75
+class_weights <- class_weights / mean(class_weights)
+names(class_weights) <- as.character(0:(n_classes - 1))
+class_weights <- as.list(class_weights)
+
+model <- keras_model_sequential(input_shape = ncol(x_train)) %>%
+  layer_dense(units = 30, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>%
+  layer_dense(units = 30, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>%
+  layer_dense(units = n_classes) %>%
+  layer_activation(activation = "softmax")
+
+model %>% compile(loss = "sparse_categorical_crossentropy", optimizer = "adam",
+  metrics = "accuracy"
+)
+
+model_training_history <- fit(model, x = x_train, y = y_train, epochs = 20, batch_size = 32, class_weight = class_weights)
+```
+
+```{r}
+save_model_tf(model, "results/multiclass_model", overwrite = T)
+save(idf, class_levels, file = "data/multiclass_idf_levels.rda")
+```
+  
