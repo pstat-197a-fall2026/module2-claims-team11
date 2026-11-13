@@ -23,6 +23,67 @@ load("../data/claims-test.RData")
 
 ```
 
+# Train on all data
+This is the model that was trained for binary classification.
+- Tokenizes into 1-grams (words)
+- Calculates tf-idf, but uses only the top 7500 most frequent tokens that were in under 90% of documents, but at least 2 documents
+- Neural network has 2 hidden layers with 20 neurons each. Minimal l2 (ridge) regularization. Uses ReLU activation function.
+- Optimized with adam, loss function was binary cross entropy
+```{r}
+set_random_seed(1)
+training_data <- claims_clean
+class_levels <- levels(training_data$bclass)
+
+# Tokenize all observations
+training_tokens <- training_data %>% tokenize_fn(n = 1)
+
+# Calculate term frequencies
+training_tf <- training_tokens %>% tf_fn()
+
+# Calculate IDF using all available observations
+idf <- training_tf %>%
+  idf_fn(max_terms = 7500, max_doc_prop = 0.9, min_doc_freq = 2)
+
+# Generate TF-IDF matrix
+training_tfidf <- tfidf_fn_updated(training_tf, idf, all_ids = training_data)
+
+training_model_data <- training_tfidf %>% left_join(training_data %>% select(.id, bclass), by = ".id")
+
+x_train <- training_model_data %>%
+  select(-.id, -bclass) %>%
+  as.matrix()
+
+y_train <- as.numeric(training_model_data$bclass) - 1
+
+
+# Neural Network
+model <- keras_model_sequential(input_shape = ncol(x_train)) %>%
+  layer_dense(units = 20, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>%
+  layer_dense(units = 20, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>%
+  layer_dense(units = 1) %>%
+  layer_activation(activation = "sigmoid")
+
+# Configuration
+model %>% compile(loss = "binary_crossentropy", optimizer = "adam", metrics = "binary_accuracy")
+
+# Train
+model_training_history <- fit(model, x = x_train, y = y_train, epochs = 20)
+```
+
+```{r}
+save_model_tf(model, "results/binary_nn", overwrite = T)
+save(idf, class_levels, file = "binary_idf_levels.rda")
+```
+
+<!-- EVERYTHING BELOW THIS IS SCRATCH WORK -->
+<!-- EVERYTHING BELOW THIS IS SCRATCH WORK -->
+<!-- EVERYTHING BELOW THIS IS SCRATCH WORK -->
+<!-- EVERYTHING BELOW THIS IS SCRATCH WORK -->
+<!-- EVERYTHING BELOW THIS IS SCRATCH WORK -->
+<!-- EVERYTHING BELOW THIS IS SCRATCH WORK -->
+<!-- EVERYTHING BELOW THIS IS SCRATCH WORK -->
+<!-- EVERYTHING BELOW THIS IS SCRATCH WORK -->
+
 # Quick Notes
 - I realized that in my loops, there were some pages that when cleaned, were left with no data. Those caused problems since they did not get a prediction generated.
 - Alternatively, some pages that may have had data, may still have been dropped if none of their tokens were in the list of tokens that had a idf value calculated. 
@@ -654,51 +715,3 @@ ROC AUC: 89.0%
 
 - Uses only the 7500 most common tokens when calculating the IDF.
 - Neural network has 2 hidden layers with 20 neurons each, ReLU activation, and ridge regularization with alpha = 0.001. Adam optimizer, binary cross entropy loss function. Trained for 20 epochs with a 10 epoch early stop if no progress.
-
-# Train on all data
-```{r}
-set_random_seed(1)
-training_data <- claims_clean
-class_levels <- levels(training_data$bclass)
-
-# Tokenize all observations
-training_tokens <- training_data %>% tokenize_fn(n = 1)
-
-# Calculate term frequencies
-training_tf <- training_tokens %>% tf_fn()
-
-# Calculate IDF using all available observations
-idf <- training_tf %>%
-  idf_fn(max_terms = 7500, max_doc_prop = 0.9, min_doc_freq = 2)
-
-# Generate TF-IDF matrix
-training_tfidf <- tfidf_fn_updated(training_tf, idf, all_ids = training_data)
-
-training_model_data <- training_tfidf %>% left_join(training_data %>% select(.id, bclass), by = ".id")
-
-x_train <- training_model_data %>%
-  select(-.id, -bclass) %>%
-  as.matrix()
-
-y_train <- as.numeric(training_model_data$bclass) - 1
-
-
-# Neural Network
-model <- keras_model_sequential(input_shape = ncol(x_train)) %>%
-  layer_dense(units = 20, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>%
-  layer_dense(units = 20, activation = "relu", kernel_regularizer = regularizer_l2(0.001)) %>%
-  layer_dense(units = 1) %>%
-  layer_activation(activation = "sigmoid")
-
-# Configuration
-
-model %>% compile(loss = "binary_crossentropy", optimizer = "adam", metrics = "binary_accuracy")
-
-# Train
-model_training_history <- fit(model, x = x_train, y = y_train, epochs = 20)
-```
-
-```{r}
-save_model_tf(model, "results/binary_nn", overwrite = T)
-save(idf, class_levels, file = "binary_idf_levels.rda")
-```
