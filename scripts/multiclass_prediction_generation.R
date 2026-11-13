@@ -15,6 +15,11 @@ model <- load_model_tf("results/multiclass_model") # Multiclass Neural Network
 # Preprocess raw HTML
 # claims_clean_test <- claims_test %>% parse_data()
 
+# Some rows may have been dropped when cleaning the data. Treat them as if their cleaned data is an empty string.
+dropped_ids <- setdiff(claims_test$.id, claims_clean_test$.id)
+dropped_data <- claims_test %>% filter(.id %in% dropped_ids) %>% mutate(text_clean = "")
+claims_clean_test <- rbind(claims_clean_test, dropped_data)
+
 # Convert to TFIDF matrix for NN input
 tokens <- claims_clean_test %>% tokenize_fn(n = 1)
 tf <- tokens %>% tf_fn()
