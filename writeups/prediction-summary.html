@@ -2,19 +2,29 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.7.30">
+<meta name="generator" content="quarto-1.10.18">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="author" content="James Liang, Katrina Topchiyan, Kendrick Lam, Luke Drushell, Sami Gibson">
+<meta name="author" content="James Liang">
+<meta name="author" content="Katrina Topchiyan">
+<meta name="author" content="Kendrick Lam">
+<meta name="author" content="Luke Drushell">
+<meta name="author" content="Sami Gibson">
 <meta name="dcterms.date" content="2026-11-13">
 
 <title>Predictive modeling of claims status</title>
 <style>
-code{white-space: pre-wrap;}
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
 span.smallcaps{font-variant: small-caps;}
-div.columns{display: flex; gap: min(4vw, 1.5em);}
-div.column{flex: auto; overflow-x: auto;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
 div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
@@ -32,10 +42,10 @@ ul.task-list li input[type="checkbox"] {
 <script src="prediction-summary_files/libs/quarto-html/tippy.umd.min.js"></script>
 <script src="prediction-summary_files/libs/quarto-html/anchor.min.js"></script>
 <link href="prediction-summary_files/libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="prediction-summary_files/libs/quarto-html/quarto-syntax-highlighting-de070a7b0ab54f8780927367ac907214.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="prediction-summary_files/libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="prediction-summary_files/libs/bootstrap/bootstrap.min.js"></script>
 <link href="prediction-summary_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="prediction-summary_files/libs/bootstrap/bootstrap-81267100e462c21b3d6c0d5bf76a3417.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="prediction-summary_files/libs/bootstrap/bootstrap-215b371544c282197b31c8aa00ce3677.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 
 
 </head>
@@ -56,9 +66,13 @@ ul.task-list li input[type="checkbox"] {
 <div class="quarto-title-meta">
 
     <div>
-    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-heading">Authors</div>
     <div class="quarto-title-meta-contents">
-             <p>James Liang, Katrina Topchiyan, Kendrick Lam, Luke Drushell, Sami Gibson </p>
+             <p>James Liang </p>
+             <p>Katrina Topchiyan </p>
+             <p>Kendrick Lam </p>
+             <p>Luke Drushell </p>
+             <p>Sami Gibson </p>
           </div>
   </div>
     
@@ -77,34 +91,29 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<section id="abstract" class="level3">
-<h3 class="anchored" data-anchor-id="abstract">Abstract</h3>
-<p>Provide a 3-5 sentence summary of your work on the primary task. Indicate what input data was used, what method was used for binary class predictions, what method was used for multiclass predictions, and what estimated accuracies were achieved.</p>
-<blockquote class="blockquote">
-<p>We classified webpages using text extracted from HTML headings and paragraphs. After preprocessing, word-level text was represented by term frequency–inverse document frequency (TF-IDF) features. A two-hidden-layer neural network achieved <strong>83.6%</strong> accuracy on the held-out binary classification test set; a separate five-class neural network achieved <strong>77.9%</strong> held-out accuracy. Their five-fold cross-validation accuracies were <strong>80.2%</strong> and <strong>81.3%</strong>, respectively.</p>
-</blockquote>
+<section id="abstract" class="level2">
+<h2 class="anchored" data-anchor-id="abstract">Abstract</h2>
+<p>We classified webpages based on whether there was evidence of fraud or other crime using text extracted from headings and paragraphs from scraped HTML pages. After preprocessing, word-level text was represented by term frequency–inverse document frequency (TF-IDF) features. A two-hidden-layer neural network achieved <strong>83.6%</strong> testing accuracy for binary classification; a separate neural network achieved <strong>77.9%</strong> testing accuracy on multiclass classification.</p>
 </section>
-<section id="preprocessing" class="level3">
-<h3 class="anchored" data-anchor-id="preprocessing">Preprocessing</h3>
-<p>In one paragraph lay out your preprocessing pipeline. No need to provide exact step-by-step detail; just give an overview of the main components:</p>
-<blockquote class="blockquote">
-<p>Using <code>rvest</code>, we extracted only HTML headings (<code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code>) and paragraphs (<code>&lt;p&gt;</code>) and combined their text. The <code>parse_fn</code> cleaner removed URLs, emails, apostrophes, punctuation, numbers, symbols, and <code>nbsp</code> artifacts; separated joined lowercase/uppercase words; converted text to lowercase; and normalized whitespace. The reference <code>nlp_fn</code> also specifies stop-word removal, lemmatization, and exclusion of words with two or fewer characters. However, the final model scripts instead call a separate <code>tokenize_fn</code>, so these three additional filters cannot be confirmed for their features. Both models used word tokens (unigrams) and training-derived TF-IDF vectors rather than PCA: up to <strong>7,500</strong> terms for binary classification and <strong>10,000</strong> for multiclass classification, appearing in at least two and in fewer than 90% of training documents. Training vocabularies and IDF weights were applied unchanged to the test data, preserving even webpages with no selected terms.</p>
-</blockquote>
+<section id="preprocessing" class="level2">
+<h2 class="anchored" data-anchor-id="preprocessing">Preprocessing</h2>
+<p>Using <code>rvest</code>, we extracted only HTML headings (<code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code>) and paragraphs (<code>&lt;p&gt;</code>) and combined their text. The <code>parse_fn</code> cleaner removed URLs, emails, apostrophes, punctuation, numbers, symbols, and <code>nbsp</code> artifacts, separated joined lowercase/uppercase words, converted text to lowercase, and normalized whitespace. HTMLs that were filtered out in preprocessing were assigned an empty string to represent their cleaned text. The function <code>nlp_fn</code> handled removal of stop words, lemmatization of words, and exclusion of words with two or fewer characters. After the HTMLs were cleaned, they were tokenized into unigrams and the term frequencies and inverse document frequencies were calculated. Values were then multiplied to create a TF-IDF matrix as the quantitative representation for the model. The 7,500 most frequent unigrams were used for binary classification and 10,000 most frequent unigrams for multiclass classification subject to selection only if they appear in at least two HTMLs and in fewer than 90% of training documents. Training vocabularies and IDF weights were applied to the test data to calculate their TF-IDF values.</p>
 </section>
-<section id="methods" class="level3">
-<h3 class="anchored" data-anchor-id="methods">Methods</h3>
-<blockquote class="blockquote">
-<p><strong>Binary classification.</strong> We trained a feedforward neural network with <strong>two hidden layers of 20 ReLU neurons each</strong>, L2 regularization (0.001), and a single sigmoid output for relevant versus nonrelevant claim content. Training used the Adam optimizer and binary cross-entropy loss for up to 20 epochs. An 80/20 stratified train/test split and five-fold cross-validation on the training portion supported model selection; the held-out evaluation used a 20% internal validation split and early stopping (patience 10). Direct TF-IDF inputs performed better than the PCA-based alternatives examined.</p>
-</blockquote>
-<blockquote class="blockquote">
-<p><strong>Multiclass classification.</strong> A separate neural network predicted one of five claim-content categories using <strong>two hidden layers of 30 ReLU neurons each</strong>, L2 regularization (0.001), and a softmax output. It was trained for 20 epochs with Adam and sparse categorical cross-entropy. To address class imbalance, training observations were weighted using normalized inverse class proportions raised to the power 0.75. We used a stratified 80/20 split and five-fold cross-validation for evaluation. The final full-data model increased the minimum document frequency to three and used a batch size of 32.</p>
-</blockquote>
+<section id="methods" class="level2">
+<h2 class="anchored" data-anchor-id="methods">Methods</h2>
+<section id="binary-classification" class="level3">
+<h3 class="anchored" data-anchor-id="binary-classification">Binary Classification</h3>
+<p>We trained a feedforward neural network with two hidden layers of 20 neurons with ReLU activation each. Minimal L2 regularization was applied at each hidden layer and a single output neuron with sigmoid activation provided the probability for classifying claim content as relevant or irrelevant. Training used the Adam optimizer and binary cross-entropy loss for 20 epochs. An 80/20 train-test split stratified by class and five-fold cross-validation on the training portion supported model selection. Direct TF-IDF inputs were found to perform better than the PCA-based alternatives examined. Many hyperparameters like the number of neurons in each layer, the number of hidden layers, regularization amounts, and activation functions were tested before settling on the ones found.</p>
 </section>
-<section id="results" class="level3">
-<h3 class="anchored" data-anchor-id="results">Results</h3>
-<blockquote class="blockquote">
-<p><strong>Binary classification — held-out test set</strong> (positive class: relevant claim content)</p>
-</blockquote>
+<section id="multiclass-classification" class="level3">
+<h3 class="anchored" data-anchor-id="multiclass-classification">Multiclass Classification</h3>
+<p>A separate neural network predicted one of five claim-content categories using two hidden layers of 30 neurons with ReLU activation each. L2 regularization with a parameter of 0.001 was applied to each hidden layer. 5 neurons with in the output layer with softmax activation to provide probabilities for each category. It was trained for 20 epochs with the Adam optimizer and the sparse categorical cross-entropy loss function. To address class imbalances in the data such as the category “Other claim content” only making up around 4% of training data, class weights were added to the model to help with training and prediction. We used a 80/20 split stratified by class and five-fold cross-validation for model evaluation. The final model increased the minimum document frequency to three for token selection compared to the binary model.</p>
+</section>
+</section>
+<section id="results" class="level2">
+<h2 class="anchored" data-anchor-id="results">Results</h2>
+<p>Metrics were calculated on a held-out test set of data. 429 webpages were used in binary classification and 430 webpages were used in multiclass classification. The positive class for binary classification is “Relevant Claim Content.”</p>
+<p><strong>Binary Classification Metrics</strong></p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -123,15 +132,13 @@ ul.task-list li input[type="checkbox"] {
 </tr>
 </tbody>
 </table>
-<blockquote class="blockquote">
-<p><strong>Multiclass classification — held-out test set</strong> (430 webpages; five classes)</p>
-</blockquote>
+<p><strong>Multiclass Classification Metrics</strong></p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
-<th style="text-align: center;">Macro sensitivity</th>
-<th style="text-align: center;">Macro specificity</th>
-<th style="text-align: center;">Overall accuracy</th>
+<th style="text-align: center;">Macro Sensitivity</th>
+<th style="text-align: center;">Macro Specificity</th>
+<th style="text-align: center;">Accuracy</th>
 <th style="text-align: center;">Macro F1</th>
 </tr>
 </thead>
@@ -145,7 +152,7 @@ ul.task-list li input[type="checkbox"] {
 </tbody>
 </table>
 <blockquote class="blockquote">
-<p>Multiclass sensitivity was highest for <em>Possible Fatality</em> (88.6%) and lowest for <em>Other claim content</em> (54.2%). Sensitivity and specificity for multiclass results use equally weighted one-versus-rest averages across the five categories; accuracy is the overall fraction correctly classified</p>
+<p>Multiclass sensitivity was highest for <em>Possible Fatality</em> (88.6%) and lowest for <em>Other claim content</em> (54.2%). Sensitivity and specificity for multiclass results use equally weighted one-versus-rest averages across the five categories. Accuracy is the overall fraction correctly classified.</p>
 </blockquote>
 </section>
 
@@ -202,13 +209,14 @@ ul.task-list li input[type="checkbox"] {
       e.clearSelection();
     }
     const getTextToCopy = function(trigger) {
-        const codeEl = trigger.previousElementSibling.cloneNode(true);
-        for (const childEl of codeEl.children) {
-          if (isCodeAnnotation(childEl)) {
-            childEl.remove();
-          }
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
         }
-        return codeEl.innerText;
+      }
+      return codeEl.innerText;
     }
     const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
       text: getTextToCopy

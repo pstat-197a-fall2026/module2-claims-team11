@@ -1,40 +1,46 @@
 ---
 title: "Predictive modeling of claims status"
-author: 'James Liang,	Katrina Topchiyan,	Kendrick Lam,	Luke Drushell,	Sami Gibson'
+author: 
+- James Liang
+- Katrina Topchiyan
+- Kendrick Lam
+- Luke Drushell
+- Sami Gibson
 date: today
 ---
 
-### Abstract
+## Abstract
 
-Provide a 3-5 sentence summary of your work on the primary task. Indicate what input data was used, what method was used for binary class predictions, what method was used for multiclass predictions, and what estimated accuracies were achieved.
+We classified webpages based on whether there was evidence of fraud or other crime using text extracted from headings and paragraphs from scraped HTML pages. After preprocessing, word-level text was represented by term frequency–inverse document frequency (TF-IDF) features. A two-hidden-layer neural network achieved **83.6%** testing accuracy for binary classification; a separate neural network achieved **77.9%** testing accuracy on multiclass classification.
 
-> We classified webpages using text extracted from HTML headings and paragraphs. After preprocessing, word-level text was represented by term frequency–inverse document frequency (TF-IDF) features. A two-hidden-layer neural network achieved **83.6%** accuracy on the held-out binary classification test set; a separate five-class neural network achieved **77.9%** held-out accuracy. Their five-fold cross-validation accuracies were **80.2%** and **81.3%**, respectively.
+## Preprocessing
 
-### Preprocessing
+Using `rvest`, we extracted only HTML headings (`<h1>`–`<h6>`) and paragraphs (`<p>`) and combined their text. The `parse_fn` cleaner removed URLs, emails, apostrophes, punctuation, numbers, symbols, and `nbsp` artifacts, separated joined lowercase/uppercase words, converted text to lowercase, and normalized whitespace.  HTMLs that were filtered out in preprocessing were assigned an empty string to represent their cleaned text. The function `nlp_fn` handled removal of stop words, lemmatization of words, and exclusion of words with two or fewer characters. After the HTMLs were cleaned, they were tokenized into unigrams and the term frequencies and inverse document frequencies were calculated. Values were then multiplied to create a TF-IDF matrix as the quantitative representation for the model. The 7,500 most frequent unigrams were used for binary classification and 10,000 most frequent unigrams for multiclass classification subject to selection only if they appear in at least two HTMLs and in fewer than 90% of training documents. Training vocabularies and IDF weights were applied to the test data to calculate their TF-IDF values.
 
-In one paragraph lay out your preprocessing pipeline. No need to provide exact step-by-step detail; just give an overview of the main components:
+## Methods
 
-> Using `rvest`, we extracted only HTML headings (`<h1>`–`<h6>`) and paragraphs (`<p>`) and combined their text. The `parse_fn` cleaner removed URLs, emails, apostrophes, punctuation, numbers, symbols, and `nbsp` artifacts; separated joined lowercase/uppercase words; converted text to lowercase; and normalized whitespace. The reference `nlp_fn` also specifies stop-word removal, lemmatization, and exclusion of words with two or fewer characters. However, the final model scripts instead call a separate `tokenize_fn`, so these three additional filters cannot be confirmed for their features. Both models used word tokens (unigrams) and training-derived TF-IDF vectors rather than PCA: up to **7,500** terms for binary classification and **10,000** for multiclass classification, appearing in at least two and in fewer than 90% of training documents. Training vocabularies and IDF weights were applied unchanged to the test data, preserving even webpages with no selected terms.
+### Binary Classification 
 
-### Methods
+We trained a feedforward neural network with two hidden layers of 20 neurons with ReLU activation each. Minimal L2 regularization was applied at each hidden layer and a single output neuron with sigmoid activation provided the probability for classifying claim content as relevant or irrelevant. Training used the Adam optimizer and binary cross-entropy loss for 20 epochs. An 80/20 train-test split stratified by class and five-fold cross-validation on the training portion supported model selection. Direct TF-IDF inputs were found to perform better than the PCA-based alternatives examined. Many hyperparameters like the number of neurons in each layer, the number of hidden layers, regularization amounts, and activation functions were tested before settling on the ones found. 
 
-> **Binary classification.** We trained a feedforward neural network with **two hidden layers of 20 ReLU neurons each**, L2 regularization (0.001), and a single sigmoid output for relevant versus nonrelevant claim content. Training used the Adam optimizer and binary cross-entropy loss for up to 20 epochs. An 80/20 stratified train/test split and five-fold cross-validation on the training portion supported model selection; the held-out evaluation used a 20% internal validation split and early stopping (patience 10). Direct TF-IDF inputs performed better than the PCA-based alternatives examined.
+### Multiclass Classification
 
-> **Multiclass classification.** A separate neural network predicted one of five claim-content categories using **two hidden layers of 30 ReLU neurons each**, L2 regularization (0.001), and a softmax output. It was trained for 20 epochs with Adam and sparse categorical cross-entropy. To address class imbalance, training observations were weighted using normalized inverse class proportions raised to the power 0.75. We used a stratified 80/20 split and five-fold cross-validation for evaluation. The final full-data model increased the minimum document frequency to three and used a batch size of 32.
+A separate neural network predicted one of five claim-content categories using two hidden layers of 30 neurons with ReLU activation each. L2 regularization with a parameter of 0.001 was applied to each hidden layer. 5 neurons with in the output layer with softmax activation to provide probabilities for each category. It was trained for 20 epochs with the Adam optimizer and the sparse categorical cross-entropy loss function. To address class imbalances in the data such as the category "Other claim content" only making up around 4% of training data, class weights were added to the model to help with training and prediction. We used a 80/20 split stratified by class and five-fold cross-validation for model evaluation. The final model increased the minimum document frequency to three for token selection compared to the binary model.
 
 
-### Results
+## Results
+Metrics were calculated on a held-out test set of data. 429 webpages were used in binary classification and 430 webpages were used in multiclass classification. The positive class for binary classification is "Relevant Claim Content."
 
-> **Binary classification — held-out test set** (positive class: relevant claim content)
+**Binary Classification Metrics** 
 
 | Sensitivity | Specificity | Accuracy | ROC AUC |
 |:-----------:|:-----------:|:--------:|:-------:|
 | 83.5% | 83.8% | **83.6%** | 89.0% |
 
-> **Multiclass classification — held-out test set** (430 webpages; five classes)
+**Multiclass Classification Metrics** 
 
-| Macro sensitivity | Macro specificity | Overall accuracy | Macro F1 |
-|:-----------------:|:-----------------:|:----------------:|:--------:|
+| Macro Sensitivity | Macro Specificity | Accuracy | Macro F1 |
+|:-----------------:|:-----------------:|:--------:|:--------:|
 | 74.9% | 93.6% | **77.9%** | 74.0% |
 
-> Multiclass sensitivity was highest for *Possible Fatality* (88.6%) and lowest for *Other claim content* (54.2%). Sensitivity and specificity for multiclass results use equally weighted one-versus-rest averages across the five categories; accuracy is the overall fraction correctly classified
+> Multiclass sensitivity was highest for *Possible Fatality* (88.6%) and lowest for *Other claim content* (54.2%). Sensitivity and specificity for multiclass results use equally weighted one-versus-rest averages across the five categories. Accuracy is the overall fraction correctly classified.
