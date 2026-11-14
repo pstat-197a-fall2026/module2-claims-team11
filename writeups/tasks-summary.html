@@ -2,19 +2,29 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.7.32">
+<meta name="generator" content="quarto-1.10.18">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="author" content="James Liang, Katrina Topchiyan, Kendrick Lam, Luke Drushell, Sami Gibson">
+<meta name="author" content="James Liang">
+<meta name="author" content="Katrina Topchiyan">
+<meta name="author" content="Kendrick Lam">
+<meta name="author" content="Luke Drushell">
+<meta name="author" content="Sami Gibson">
 <meta name="dcterms.date" content="2026-11-13">
 
 <title>Summary of exploratory tasks</title>
 <style>
-code{white-space: pre-wrap;}
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
 span.smallcaps{font-variant: small-caps;}
-div.columns{display: flex; gap: min(4vw, 1.5em);}
-div.column{flex: auto; overflow-x: auto;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
 div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
@@ -32,10 +42,10 @@ ul.task-list li input[type="checkbox"] {
 <script src="tasks-summary_files/libs/quarto-html/tippy.umd.min.js"></script>
 <script src="tasks-summary_files/libs/quarto-html/anchor.min.js"></script>
 <link href="tasks-summary_files/libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="tasks-summary_files/libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="tasks-summary_files/libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="tasks-summary_files/libs/bootstrap/bootstrap.min.js"></script>
 <link href="tasks-summary_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="tasks-summary_files/libs/bootstrap/bootstrap-81267100e462c21b3d6c0d5bf76a3417.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="tasks-summary_files/libs/bootstrap/bootstrap-215b371544c282197b31c8aa00ce3677.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 
 
 </head>
@@ -56,9 +66,13 @@ ul.task-list li input[type="checkbox"] {
 <div class="quarto-title-meta">
 
     <div>
-    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-heading">Authors</div>
     <div class="quarto-title-meta-contents">
-             <p>James Liang, Katrina Topchiyan, Kendrick Lam, Luke Drushell, Sami Gibson </p>
+             <p>James Liang </p>
+             <p>Katrina Topchiyan </p>
+             <p>Kendrick Lam </p>
+             <p>Luke Drushell </p>
+             <p>Sami Gibson </p>
           </div>
   </div>
     
@@ -77,17 +91,17 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<section id="preliminary-task-1" class="level2">
-<h2 class="anchored" data-anchor-id="preliminary-task-1">Preliminary Task 1</h2>
+<section id="preliminary-task-1-html-scraping" class="level2">
+<h2 class="anchored" data-anchor-id="preliminary-task-1-html-scraping">Preliminary Task 1: HTML Scraping</h2>
 <p>We briefly considered whether header information meant including each page’s <code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code> tags, or if that was referring instead to the <code>&lt;head&gt;</code> tag. Because of this confusion, we opted to run our PCA and Logistic Regression models on three parse functions: the first of which only included <code>&lt;p&gt;</code>, the second including both <code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code> and <code>&lt;p&gt;</code>, and the third which included <code>&lt;head&gt;</code> and <code>&lt;p&gt;</code>. We found that the best model included both <code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code> and <code>&lt;p&gt;</code> tags, achieving <strong>75.1% accuracy</strong>, compared with <strong>72.0% accuracy</strong> for the model using only <code>&lt;p&gt;</code> tags, an improvement of <strong>3.1 percentage points</strong>. The model including <code>&lt;head&gt;</code> and <code>&lt;p&gt;</code> tags achieved the worst score, with <strong>60.8% accuracy</strong>. These results suggest that including header information improved predictive performance under our updated preprocessing approach.</p>
-<section id="preliminary-task-2-bigram-analysis" class="level3">
-<h3 class="anchored" data-anchor-id="preliminary-task-2-bigram-analysis">Preliminary Task 2: Bigram Analysis</h3>
+</section>
+<section id="preliminary-task-2-bigram-analysis" class="level2">
+<h2 class="anchored" data-anchor-id="preliminary-task-2-bigram-analysis">Preliminary Task 2: Bigram Analysis</h2>
 <p>We investigated whether including bigrams (two-word combinations) improved binary webpage classification compared with using individual words alone. Using our shared preprocessing script, we converted cleaned webpage text into numerical features using TF-IDF and applied PCA to reduce the number of variables. We then fitted logistic regression models using word-based predictions, with and without additional bigram principal components. The word-only model achieved <strong>73.8% accuracy</strong> on 420 validation webpages, compared with <strong>73.3% accuracy</strong> for the model incorporating bigrams, a decrease of <strong>0.48 percentage points</strong>. Adding bigrams changed 12 individual predictions, while both models performed well above the majority-class baseline of <strong>53.1%</strong>. These results suggest that bigrams did not provide additional predictive value under our updated preprocessing approach. Furthermore, several common bigrams still contained webpage related terms and formatting terms rather than meaningful text, suggesting that further cleaning may improve model performance and interpretability.</p>
 </section>
-<section id="preliminary-task-3-neural-network" class="level3">
-<h3 class="anchored" data-anchor-id="preliminary-task-3-neural-network">Preliminary Task 3: Neural Network</h3>
-<p>We trained two neural networks to predict whether a webpage contained relevant claim content. We converted the cleaned text into numerical features using TF-IDF. Both models used the Adam optimizer, binary cross-entropy loss, and five training epochs. Our first model used 25 neurons and a dropout rate of 0.2, achieving 81.8% accuracy. Our second model used 64 neurons and a dropout rate of 0.4, achieving 81.1% accuracy. Overall, our first model performed better and achieved a higher accuracy than the best logistic regression model from Task 1, which achieved 75.1%.</p>
-</section>
+<section id="preliminary-task-3-neural-network" class="level2">
+<h2 class="anchored" data-anchor-id="preliminary-task-3-neural-network">Preliminary Task 3: Neural Network</h2>
+<p>We trained two neural networks to predict whether a webpage contained relevant claim content. We converted the cleaned text into numerical features using TF-IDF. Both models used the Adam optimizer, binary cross-entropy loss, and five training epochs. Our first model used 25 neurons and a dropout rate of 0.2, achieving <strong>81.8% accuracy</strong>. Our second model used 64 neurons and a dropout rate of 0.4, achieving <strong>81.1% accuracy</strong>. Overall, our first model performed better and achieved a higher accuracy than the best logistic regression model from Task 1, which achieved <strong>75.1%</strong>.</p>
 </section>
 
 </main>
@@ -143,13 +157,14 @@ ul.task-list li input[type="checkbox"] {
       e.clearSelection();
     }
     const getTextToCopy = function(trigger) {
-        const codeEl = trigger.previousElementSibling.cloneNode(true);
-        for (const childEl of codeEl.children) {
-          if (isCodeAnnotation(childEl)) {
-            childEl.remove();
-          }
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
         }
-        return codeEl.innerText;
+      }
+      return codeEl.innerText;
     }
     const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
       text: getTextToCopy
