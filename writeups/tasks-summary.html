@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="James Liang, Katrina Topchiyan, Kendrick Lam, Luke Drushell, Sami Gibson">
-<meta name="dcterms.date" content="2026-11-12">
+<meta name="dcterms.date" content="2026-11-13">
 
 <title>Summary of exploratory tasks</title>
 <style>
@@ -65,7 +65,7 @@ ul.task-list li input[type="checkbox"] {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">November 12, 2026</p>
+      <p class="date">November 13, 2026</p>
     </div>
   </div>
   
@@ -77,23 +77,15 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<section id="html-scraping" class="level3">
-<h3 class="anchored" data-anchor-id="html-scraping">HTML scraping</h3>
-<p>Does including header content improve predictions? Answer the question and provide quantitative evidence supporting your answer.</p>
-</section>
 <section id="preliminary-task-1" class="level2">
 <h2 class="anchored" data-anchor-id="preliminary-task-1">Preliminary Task 1</h2>
 <p>We briefly considered whether header information meant including each page’s <code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code> tags, or if that was referring instead to the <code>&lt;head&gt;</code> tag. Because of this confusion, we opted to run our PCA and Logistic Regression models on three parse functions: the first of which only included <code>&lt;p&gt;</code>, the second including both <code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code> and <code>&lt;p&gt;</code>, and the third which included <code>&lt;head&gt;</code> and <code>&lt;p&gt;</code>. We found that the best model included both <code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code> and <code>&lt;p&gt;</code> tags, achieving <strong>75.1% accuracy</strong>, compared with <strong>72.0% accuracy</strong> for the model using only <code>&lt;p&gt;</code> tags, an improvement of <strong>3.1 percentage points</strong>. The model including <code>&lt;head&gt;</code> and <code>&lt;p&gt;</code> tags achieved the worst score, with <strong>60.8% accuracy</strong>. These results suggest that including header information improved predictive performance under our updated preprocessing approach.</p>
-<section id="bigrams" class="level3">
-<h3 class="anchored" data-anchor-id="bigrams">Bigrams</h3>
-<p>Do bigrams capture additional information relevant to the classification of interest? Answer the question, <strong>briefly</strong> describe what analysis you conducted to arrive at your answer, and provide quantitative evidence supporting your answer.</p>
-</section>
 <section id="preliminary-task-2-bigram-analysis" class="level3">
 <h3 class="anchored" data-anchor-id="preliminary-task-2-bigram-analysis">Preliminary Task 2: Bigram Analysis</h3>
 <p>We investigated whether including bigrams (two-word combinations) improved binary webpage classification compared with using individual words alone. Using our shared preprocessing script, we converted cleaned webpage text into numerical features using TF-IDF and applied PCA to reduce the number of variables. We then fitted logistic regression models using word-based predictions, with and without additional bigram principal components. The word-only model achieved <strong>73.8% accuracy</strong> on 420 validation webpages, compared with <strong>73.3% accuracy</strong> for the model incorporating bigrams, a decrease of <strong>0.48 percentage points</strong>. Adding bigrams changed 12 individual predictions, while both models performed well above the majority-class baseline of <strong>53.1%</strong>. These results suggest that bigrams did not provide additional predictive value under our updated preprocessing approach. Furthermore, several common bigrams still contained webpage related terms and formatting terms rather than meaningful text, suggesting that further cleaning may improve model performance and interpretability.</p>
 </section>
-<section id="neural-net" class="level3">
-<h3 class="anchored" data-anchor-id="neural-net">Neural net</h3>
+<section id="preliminary-task-3-neural-network" class="level3">
+<h3 class="anchored" data-anchor-id="preliminary-task-3-neural-network">Preliminary Task 3: Neural Network</h3>
 <p>We trained two neural networks to predict whether a webpage contained relevant claim content. We converted the cleaned text into numerical features using TF-IDF. Both models used the Adam optimizer, binary cross-entropy loss, and five training epochs. Our first model used 25 neurons and a dropout rate of 0.2, achieving 81.8% accuracy. Our second model used 64 neurons and a dropout rate of 0.4, achieving 81.1% accuracy. Overall, our first model performed better and achieved a higher accuracy than the best logistic regression model from Task 1, which achieved 75.1%.</p>
 </section>
 </section>
