@@ -4,17 +4,9 @@ author: 'James Liang,	Katrina Topchiyan,	Kendrick Lam,	Luke Drushell,	Sami Gibso
 date: today
 ---
 
-### HTML scraping
-
-Does including header content improve predictions? Answer the question and provide quantitative evidence supporting your answer.
-
 ## Preliminary Task 1
 
 We briefly considered whether header information meant including each page's `<h1>`–`<h6>` tags, or if that was referring instead to the `<head>` tag. Because of this confusion, we opted to run our PCA and Logistic Regression models on three parse functions: the first of which only included `<p>`, the second including both `<h1>`–`<h6>` and `<p>`, and the third which included `<head>` and `<p>`. We found that the best model included both `<h1>`–`<h6>` and `<p>` tags, achieving **75.1% accuracy**, compared with **72.0% accuracy** for the model using only `<p>` tags, an improvement of **3.1 percentage points**. The model including `<head>` and `<p>` tags achieved the worst score, with **60.8% accuracy**. These results suggest that including header information improved predictive performance under our updated preprocessing approach.
-
-### Bigrams
-
-Do bigrams capture additional information relevant to the classification of interest? Answer the question, **briefly** describe what analysis you conducted to arrive at your answer, and provide quantitative evidence supporting your answer.
 
 ### Preliminary Task 2: Bigram Analysis
 
